@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cardio Risk Screener</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="header">
+                <h1>&#10084; Heart Risk Screener</h1>
+                <p class="subtitle">Clinical Decision Support Tool for Heart Disease Risk Assessment</p>
+                <div class="disclaimer">
+                    <strong>IMPORTANT:</strong> This is a screening tool, not a diagnostic tool. 
+                    Always consult with a qualified cardiologist for proper medical evaluation.
+                </div>
+            </div>
+            
+            <form action="/result" method="POST" class="form">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="age">Age (years)</label>
+                        <input type="number" id="age" name="age" step="1" min="1" max="120" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="sex">Sex</label>
+                        <select id="sex" name="sex" required>
+                            <option value="0">Female</option>
+                            <option value="1">Male</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="cp">Chest Pain Type</label>
+                        <select id="cp" name="cp" required>
+                            <option value="0">Typical Angina</option>
+                            <option value="1">Atypical Angina</option>
+                            <option value="2">Non-Anginal Pain</option>
+                            <option value="3">Asymptomatic</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="trestbps">Resting Blood Pressure (mm Hg)</label>
+                        <input type="number" id="trestbps" name="trestbps" step="1" min="50" max="300" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="chol">Serum Cholesterol (mg/dl)</label>
+                        <input type="number" id="chol" name="chol" step="1" min="100" max="600" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="fbs">Fasting Blood Sugar &gt; 120 mg/dl</label>
+                        <select id="fbs" name="fbs" required>
+                            <option value="0">No</option>
+                            <option value="1">Yes</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="restecg">Resting ECG Results</label>
+                        <select id="restecg" name="restecg" required>
+                            <option value="0">Normal</option>
+                            <option value="1">ST-T Wave Abnormality</option>
+                            <option value="2">Left Ventricular Hypertrophy</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="thalach">Maximum Heart Rate Achieved</label>
+                        <input type="number" id="thalach" name="thalach" step="1" min="60" max="220" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="exang">Exercise Induced Angina</label>
+                        <select id="exang" name="exang" required>
+                            <option value="0">No</option>
+                            <option value="1">Yes</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="oldpeak">ST Depression (Oldpeak)</label>
+                        <input type="number" id="oldpeak" name="oldpeak" step="0.1" min="0" max="10" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="slope">Slope of Peak Exercise ST Segment</label>
+                        <select id="slope" name="slope" required>
+                            <option value="0">Upsloping</option>
+                            <option value="1">Flat</option>
+                            <option value="2">Downsloping</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="ca">Major Vessels Colored by Fluoroscopy</label>
+                        <select id="ca" name="ca" required>
+                            <option value="0">0</option>
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="thal">Thalassemia</label>
+                        <select id="thal" name="thal" required>
+                            <option value="3">Normal</option>
+                            <option value="6">Fixed Defect</option>
+                            <option value="7">Reversible Defect</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="button-container">
+                    <button type="submit" class="btn-primary">Check My Heart Risk</button>
+                    <a href="/leaderboard" class="btn-secondary">View Model Leaderboard</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

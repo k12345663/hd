@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Risk Assessment Results</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="header">
+                <h1>&#10084; Heart Disease Risk Assessment</h1>
+                <p class="subtitle">Clinical AI Prediction Results</p>
+            </div>
+            
+            <div class="result-section">
+                <h2>Estimated Risk Level</h2>
+                <div class="risk-display">
+                    <div class="risk-percentage risk-{{ band.lower() }}">
+                        {{ risk_pct }}%
+                    </div>
+                    <div class="risk-badge risk-badge-{{ band.lower() }}">
+                        {{ band }} RISK
+                    </div>
+                </div>
+            </div>
+            
+            <div class="recommendations-section">
+                <h2>Recommended Next Steps</h2>
+                <div class="disclaimer">
+                    These are general screening recommendations based on statistical models. 
+                    Please consult a qualified cardiologist for personalized medical advice.
+                </div>
+                <ul class="recommendations-list">
+                    {% for rec in recs %}
+                    <li>{{ rec }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            
+            <div class="info-section">
+                <h3>Understanding Your Risk Level</h3>
+                <div class="risk-legend">
+                    <div class="legend-item">
+                        <span class="legend-badge risk-badge-low">LOW</span>
+                        <span>&lt; 20% - Continue healthy lifestyle practices</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-badge risk-badge-moderate">MODERATE</span>
+                        <span>20-50% - Schedule preventive cardiac screening</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-badge risk-badge-high">HIGH</span>
+                        <span>50-75% - Consult cardiologist soon</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-badge risk-badge-critical">CRITICAL</span>
+                        <span>&gt; 75% - Seek urgent cardiac evaluation</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="button-container">
+                <a href="/" class="btn-primary">New Assessment</a>
+                <a href="/leaderboard" class="btn-secondary">View Model Performance</a>
+            </div>
+            
+            <div class="medical-disclaimer">
+                <strong>Medical Disclaimer:</strong> This tool uses machine learning models trained on historical data 
+                for screening purposes only. It is not a substitute for professional medical diagnosis. 
+                If you experience severe chest pain, shortness of breath, or other cardiac symptoms, 
+                seek emergency medical attention immediately.
+            </div>
+        </div>
+    </div>
+</body>
+</html>

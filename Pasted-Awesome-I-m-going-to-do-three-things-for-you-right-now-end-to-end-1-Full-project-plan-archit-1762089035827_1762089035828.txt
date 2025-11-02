@@ -1,0 +1,895 @@
+Awesome. I’m going to do three things for you right now, end to end:
+
+1. Full project plan (architecture, stack, workflow, features like a real hospital-facing AI tool)
+2. Exact dataset and ML pipeline design (34-model training strategy, evaluation, medical outputs)
+3. Production-grade code skeleton: Flask API + UI + model inference + training script
+
+   * Clean, no comments in code because you asked for that
+   * You’ll be able to expand it into a full app
+
+We’ll call the project: CARDIO-RISK AI
+
+---
+
+1. Project Overview
+
+---
+
+Objective
+Build a clinical decision-support web app where a user enters their clinical values (age, bp, cholesterol, etc.).
+The app returns:
+
+* Predicted heart disease risk (%) for that person
+* A ranked leaderboard of 34 trained ML models and ensembles
+* Clinical advice-style “Recommended Tests Next” like a cardiologist would say (non-emergency guidance, not emergency triage)
+
+Target user
+
+* Screening / awareness, not emergency ER triage
+* College health camps, CSR outreach, blood donation camps
+* Places like India where you don’t always get a cardiologist in first visit
+
+Important output philosophy
+We are not “diagnosing heart disease”. We are screening probability using historical data patterns.
+We’ll talk like: “Estimated risk 62%. Please get XYZ test done. Please see a cardiologist for confirmation.”
+This is medically safer and compliant.
+
+---
+
+2. Dataset
+
+---
+
+We’ll base v1 on the UCI Cleveland Heart Disease dataset (commonly used for binary classification of heart disease risk).
+This is a classic dataset with 14 features including:
+
+* age
+* sex
+* cp (chest pain type)
+* trestbps (resting blood pressure)
+* chol (serum cholesterol mg/dl)
+* fbs (fasting blood sugar > 120 mg/dl)
+* restecg (resting ECG results)
+* thalach (max heart rate achieved)
+* exang (exercise induced angina: yes/no)
+* oldpeak (ST depression)
+* slope (slope of the peak exercise ST segment)
+* ca (number of major vessels colored by fluoroscopy)
+* thal (thalassemia)
+* target (presence of heart disease)
+
+We will treat `target` as “has heart disease / likely heart disease”.
+We convert it to binary (0 = no disease, 1 = disease).
+
+Clinical limitation:
+This dataset is relatively small (~303 rows). We will do:
+
+* Stratified train/test split
+* Strong cross-validation (StratifiedKFold 10-fold) to stabilize
+* Calibrated probabilities so output is “percentage risk” not raw score
+
+We will also add data cleaning steps:
+
+* Handle missing values, especially in ca and thal
+* Encode categorical columns
+* Scale appropriate columns for some models
+
+---
+
+3. Features user enters in the Flask UI
+
+---
+
+We’ll ask user for:
+
+* Age
+* Sex
+* Chest pain type (typical angina / atypical / non-anginal / asymptomatic)
+* Resting BP (mm Hg)
+* Cholesterol (mg/dl)
+* Fasting blood sugar > 120 mg/dl (yes/no)
+* Resting ECG (normal / ST-T abnormality / LVH)
+* Max heart rate achieved
+* Exercise-induced angina (yes/no)
+* ST depression (‘oldpeak’)
+* Slope of ST segment (upsloping / flat / downsloping)
+* Number of major vessels by fluoroscopy (0–3)
+* Thalassemia (normal / fixed defect / reversible defect)
+
+These map 1:1 to the dataset columns, so inference is consistent.
+
+---
+
+4. ML Modeling Strategy (34 models)
+
+---
+
+We will train and evaluate 34 total models. These include:
+A. Linear / Generalized Linear Models
+
+1. LogisticRegression (liblinear)
+2. LogisticRegression (saga, elastic net)
+3. RidgeClassifierCV
+4. SGDClassifier (log loss)
+5. PassiveAggressiveClassifier (calibrated)
+
+B. Tree-based single estimators
+6. DecisionTreeClassifier (gini)
+7. DecisionTreeClassifier (entropy)
+8. ExtraTreeClassifier
+
+C. Ensemble: bagging / boosting / forests
+9. RandomForestClassifier
+10. ExtraTreesClassifier
+11. GradientBoostingClassifier
+12. AdaBoostClassifier
+13. XGBoostClassifier
+14. LightGBMClassifier
+15. CatBoostClassifier
+16. BaggingClassifier(LogReg base)
+17. BaggingClassifier(DecisionTree base)
+18. HistGradientBoostingClassifier
+19. StackingClassifier level-1 stack of top linear + tree models
+20. VotingClassifier (soft vote best calibrated top 5 models)
+
+D. k-NN / Distance-based / SVM
+21. KNeighborsClassifier (k=3)
+22. KNeighborsClassifier (k=7, distance weights)
+23. SVC (RBF, probability=True)
+24. LinearSVC (calibrated)
+25. NuSVC
+
+E. Naive Bayes / Probabilistic
+26. GaussianNB
+27. BernoulliNB
+28. ComplementNB
+
+F. Neural models
+29. MLPClassifier shallow (1 hidden layer 32 units)
+30. MLPClassifier deep (64-32-16)
+
+G. Calibration / Refits / Variants
+31. CalibratedClassifierCV(RandomForest)
+32. CalibratedClassifierCV(SVC linear)
+33. BalancedRandomForestClassifier (class_weight addressing imbalance)
+34. EasyEnsembleClassifier (for imbalance; from imblearn.ensemble)
+
+Why this mix:
+
+* Diversity of decision boundaries captures nonlinear cardiology patterns (angina + ST depression + thal).
+* We include class imbalance–oriented ensembles because in screening populations, majority can be “healthy,” and naive models can under-detect positives.
+
+Evaluation metrics we’ll store per model:
+
+* AUROC (Area Under ROC Curve)
+* Accuracy
+* Recall (Sensitivity) for “disease present”
+* Precision for “disease present”
+* F1 score
+* Brier score loss (calibration quality)
+* Inference latency (ms) for single sample
+
+Clinical angle: In screening, sensitivity (recall for disease) is very important. A cardiologist will prefer a model that “over-warns” instead of missing a high-risk patient. So in leaderboard view we will rank primarily by recall, then AUROC.
+
+We will persist:
+
+* The best individual model for prediction (as pickled .pkl file)
+* Full leaderboard (CSV/JSON saved to disk to load in dashboard)
+
+---
+
+5. Flask App UX Flow
+
+---
+
+Page 1: “Heart Risk Screener”
+
+* Form with all 13 inputs
+* Submit button “Check My Heart Risk”
+
+After submit:
+
+* Backend loads best model.pkl
+* Cleans/transforms input same as training pipeline
+* Predicts probability of heart disease (0–1 → ×100 for %)
+* Returns a results page with:
+
+  * “Estimated Risk: 62%”
+  * Traffic-light badge:
+
+    * Green: <20%
+    * Yellow: 20–50%
+    * Orange: 50–75%
+    * Red: >75%
+
+Page 2 section: “Recommended Next Tests”
+We generate cardiologist-style structured advice based on ranges:
+
+Low risk (<20%):
+
+* Start lifestyle screening, basic lipid profile every 12 months, BP log at home, maintain BMI, regular brisk walk 30 min/day
+  Medium risk (20–50%):
+* ECG (resting)
+* Fasting lipid profile
+* HbA1c if diabetic tendency
+* Treadmill test if chest discomfort on exertion
+  High risk (>50%):
+* Urgent consultation with a cardiologist
+* Resting+stress ECG / TMT
+* Echocardiography to assess wall motion
+* Troponin test immediately if active chest pain
+* If >75% and symptoms: emergency-level advice (go to hospital now)
+
+This logic will be deterministic in code, not AI text generation, so it’s consistent and auditable.
+
+Page 3 section: “Model Performance Leaderboard”
+
+* Table showing top 10 models with Recall, AUROC, Accuracy
+* Highlight “Selected Deployed Model”
+
+Admin-only route:
+
+* /leaderboard_full shows all 34 models and metrics
+
+---
+
+6. System Architecture
+
+---
+
+Layers
+
+1. data/
+   heart.csv (Cleveland dataset cleaned)
+   leaderboard_metrics.csv (all metrics for all 34 models)
+   scaler.pkl, encoder.pkl (if needed)
+   best_model.pkl
+
+2. training/
+   train_models.py
+   preprocess.py
+   evaluate.py
+
+3. app/
+   app.py (Flask server)
+   inference.py (load model + transform + predict)
+   risk_logic.py (map % to advice/tests)
+   templates/
+   index.html
+   result.html
+   leaderboard.html
+   static/
+   styles.css
+   simple JS for interactivity
+
+4. requirements.txt
+   flask
+   scikit-learn
+   xgboost
+   lightgbm
+   catboost
+   imbalanced-learn
+   pandas
+   numpy
+   joblib
+
+---
+
+7. Detailed Workflow
+
+---
+
+Training phase (offline, once):
+
+* Load dataset
+* Clean, encode, scale
+* Split train/test
+* Train all 34 models in a loop
+* Calibrate probability where needed
+* Get metrics
+* Pick best model for deployment
+* Save:
+
+  * best_model.pkl
+  * preprocessing pipeline object (encoder/scaler) as pipeline.pkl
+  * leaderboard_metrics.csv
+
+Serving phase (Flask live):
+
+* User submits form
+* We transform input using pipeline.pkl
+* We run .predict_proba() on best_model.pkl
+* We convert proba to % risk
+* We generate test recommendations (risk_logic.py)
+* We render result.html with:
+
+  * Risk %
+  * Color band
+  * Recommended Tests
+  * Button to view Model Leaderboard
+* /leaderboard route reads leaderboard_metrics.csv and displays
+
+Security / Privacy:
+
+* We do not store user’s submitted data in v1
+* We make it clear this is not emergency diagnosis
+
+---
+
+8. Production-Ready Code Skeleton (no comments inside code)
+
+---
+
+Below is the core code layout you can literally put into files.
+
+A) training/train_models.py
+This script:
+
+* loads data
+* trains 34 models
+* evaluates
+* saves best model + leaderboard
+
+```python
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_predict
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.metrics import roc_auc_score, accuracy_score, recall_score, precision_score, f1_score, brier_score_loss
+from sklearn.linear_model import LogisticRegression, SGDClassifier, PassiveAggressiveClassifier, RidgeClassifierCV
+from sklearn.tree import DecisionTreeClassifier, ExtraTreeClassifier
+from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier, GradientBoostingClassifier, AdaBoostClassifier, BaggingClassifier, HistGradientBoostingClassifier, StackingClassifier, VotingClassifier
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.svm import SVC, LinearSVC, NuSVC
+from sklearn.naive_bayes import GaussianNB, BernoulliNB, ComplementNB
+from sklearn.neural_network import MLPClassifier
+from sklearn.calibration import CalibratedClassifierCV
+from imblearn.ensemble import BalancedRandomForestClassifier, EasyEnsembleClassifier
+import joblib
+from xgboost import XGBClassifier
+from lightgbm import LGBMClassifier
+from catboost import CatBoostClassifier
+
+df = pd.read_csv('data/heart.csv')
+
+df['target'] = (df['target'] > 0).astype(int)
+
+X = df.drop('target', axis=1)
+y = df['target']
+
+cat_cols = ['sex','cp','fbs','restecg','exang','slope','ca','thal']
+num_cols = [c for c in X.columns if c not in cat_cols]
+
+preprocess = ColumnTransformer(
+    transformers=[
+        ('num', StandardScaler(), num_cols),
+        ('cat', OneHotEncoder(handle_unknown='ignore'), cat_cols)
+    ]
+)
+
+models = []
+models.append(('logreg_liblinear', LogisticRegression(max_iter=1000, solver='liblinear')))
+models.append(('logreg_saga_en', LogisticRegression(max_iter=2000, solver='saga', penalty='elasticnet', l1_ratio=0.5)))
+models.append(('ridgecv', RidgeClassifierCV()))
+models.append(('sgd_log', SGDClassifier(loss='log_loss', max_iter=2000, tol=1e-3)))
+models.append(('pa_clf', PassiveAggressiveClassifier(max_iter=2000)))
+models.append(('dt_gini', DecisionTreeClassifier(criterion='gini', random_state=0)))
+models.append(('dt_entropy', DecisionTreeClassifier(criterion='entropy', random_state=0)))
+models.append(('extra_tree', ExtraTreeClassifier(random_state=0)))
+models.append(('rf', RandomForestClassifier(n_estimators=300, random_state=0)))
+models.append(('et', ExtraTreesClassifier(n_estimators=300, random_state=0)))
+models.append(('gb', GradientBoostingClassifier(random_state=0)))
+models.append(('ada', AdaBoostClassifier(n_estimators=300, random_state=0)))
+models.append(('xgb', XGBClassifier(n_estimators=500, learning_rate=0.03, max_depth=3, subsample=0.8, colsample_bytree=0.8, eval_metric='logloss', random_state=0)))
+models.append(('lgbm', LGBMClassifier(n_estimators=500, learning_rate=0.03, max_depth=-1, subsample=0.8, colsample_bytree=0.8, random_state=0)))
+models.append(('cat', CatBoostClassifier(verbose=0, depth=4, learning_rate=0.03, iterations=500, random_seed=0)))
+models.append(('bag_logreg', BaggingClassifier(LogisticRegression(max_iter=1000, solver='liblinear'), n_estimators=20, random_state=0)))
+models.append(('bag_tree', BaggingClassifier(DecisionTreeClassifier(random_state=0), n_estimators=50, random_state=0)))
+models.append(('histgb', HistGradientBoostingClassifier(random_state=0)))
+models.append(('knn3', KNeighborsClassifier(n_neighbors=3)))
+models.append(('knn7dist', KNeighborsClassifier(n_neighbors=7, weights='distance')))
+models.append(('svc_rbf', SVC(kernel='rbf', probability=True, random_state=0)))
+models.append(('linear_svc_cal', CalibratedClassifierCV(LinearSVC(random_state=0, max_iter=5000), method='sigmoid', cv=5)))
+models.append(('nu_svc', NuSVC(probability=True, random_state=0)))
+models.append(('gauss_nb', GaussianNB()))
+models.append(('bern_nb', BernoulliNB()))
+models.append(('comp_nb', ComplementNB()))
+models.append(('mlp_shallow', MLPClassifier(hidden_layer_sizes=(32,), max_iter=2000, random_state=0)))
+models.append(('mlp_deep', MLPClassifier(hidden_layer_sizes=(64,32,16), max_iter=3000, random_state=0)))
+models.append(('rf_cal', CalibratedClassifierCV(RandomForestClassifier(n_estimators=300, random_state=0), method='isotonic', cv=5)))
+models.append(('svc_lin_cal', CalibratedClassifierCV(SVC(kernel='linear', probability=True, random_state=0), method='sigmoid', cv=5)))
+models.append(('brf', BalancedRandomForestClassifier(n_estimators=300, random_state=0)))
+models.append(('easy_ens', EasyEnsembleClassifier(random_state=0)))
+
+base_stack_estimators = [
+    ('logreg', LogisticRegression(max_iter=1000, solver='liblinear')),
+    ('rf', RandomForestClassifier(n_estimators=300, random_state=0)),
+    ('gb', GradientBoostingClassifier(random_state=0)),
+    ('svc', SVC(kernel='rbf', probability=True, random_state=0))
+]
+stack = StackingClassifier(
+    estimators=base_stack_estimators,
+    final_estimator=LogisticRegression(max_iter=1000, solver='liblinear'),
+    stack_method='predict_proba',
+    passthrough=True
+)
+models.append(('stack', stack))
+
+soft_vote_estimators = [
+    ('logreg', LogisticRegression(max_iter=1000, solver='liblinear')),
+    ('rf', RandomForestClassifier(n_estimators=300, random_state=0)),
+    ('gb', GradientBoostingClassifier(random_state=0)),
+    ('svc', SVC(kernel='rbf', probability=True, random_state=0)),
+    ('mlp', MLPClassifier(hidden_layer_sizes=(32,), max_iter=2000, random_state=0))
+]
+vote = VotingClassifier(estimators=soft_vote_estimators, voting='soft')
+models.append(('vote_soft', vote))
+
+metrics_rows = []
+
+skf = StratifiedKFold(n_splits=10, shuffle=True, random_state=0)
+
+for name, clf in models:
+    pipe = Pipeline(steps=[('prep', preprocess), ('model', clf)])
+    y_proba = cross_val_predict(pipe, X, y, cv=skf, method='predict_proba')
+    if y_proba is None:
+        y_pred_raw = cross_val_predict(pipe, X, y, cv=skf, method='decision_function')
+        y_proba = 1/(1+np.exp(-y_pred_raw))
+        if y_proba.ndim == 1:
+            y_proba = np.vstack([1-y_proba, y_proba]).T
+    y_pred = (y_proba[:,1] >= 0.5).astype(int)
+    auc = roc_auc_score(y, y_proba[:,1])
+    acc = accuracy_score(y, y_pred)
+    rec = recall_score(y, y_pred)
+    prec = precision_score(y, y_pred)
+    f1 = f1_score(y, y_pred)
+    brier = brier_score_loss(y, y_proba[:,1])
+    metrics_rows.append({
+        'model': name,
+        'roc_auc': auc,
+        'accuracy': acc,
+        'recall': rec,
+        'precision': prec,
+        'f1': f1,
+        'brier': brier
+    })
+
+metrics_df = pd.DataFrame(metrics_rows)
+metrics_df = metrics_df.sort_values(by=['recall','roc_auc'], ascending=[False,False]).reset_index(drop=True)
+
+best_model_name = metrics_df.iloc[0]['model']
+best_clf = dict(models)[best_model_name]
+best_pipe = Pipeline(steps=[('prep', preprocess), ('model', best_clf)])
+best_pipe.fit(X, y)
+
+joblib.dump(best_pipe, 'data/best_model.pkl')
+metrics_df.to_csv('data/leaderboard_metrics.csv', index=False)
+joblib.dump(preprocess, 'data/pipeline.pkl')
+```
+
+B) app/inference.py
+Loads model and runs prediction for one patient submission.
+
+```python
+import joblib
+import numpy as np
+import pandas as pd
+
+model = joblib.load('data/best_model.pkl')
+
+feature_order = ['age','sex','cp','trestbps','chol','fbs','restecg','thalach','exang','oldpeak','slope','ca','thal']
+
+def predict_risk(patient_dict):
+    x_df = pd.DataFrame([patient_dict], columns=feature_order)
+    prob = model.predict_proba(x_df)[0][1]
+    return float(prob) * 100.0
+```
+
+C) app/risk_logic.py
+Maps risk % to recommendations.
+
+```python
+def classify_band(risk_pct):
+    if risk_pct < 20:
+        return 'LOW'
+    if risk_pct < 50:
+        return 'MODERATE'
+    if risk_pct < 75:
+        return 'HIGH'
+    return 'CRITICAL'
+
+def recommendations(risk_pct, chest_pain, bp, chol):
+    band = classify_band(risk_pct)
+    recs = []
+    if band == 'LOW':
+        recs.append('Maintain healthy weight, brisk walk 30 min/day')
+        recs.append('Annual lipid profile and blood pressure check')
+        recs.append('Avoid smoking, manage cholesterol early')
+    elif band == 'MODERATE':
+        recs.append('Resting ECG and fasting lipid profile soon')
+        recs.append('HbA1c screening if diabetic tendency or high fasting sugar')
+        recs.append('Treadmill stress test if chest discomfort on exertion')
+    elif band == 'HIGH':
+        recs.append('Consult a cardiologist within days')
+        recs.append('Resting + stress ECG (TMT) and echocardiography')
+        recs.append('Troponin test if any active chest pain')
+    else:
+        recs.append('Seek urgent cardiac evaluation now')
+        recs.append('Do ECG immediately and cardiac enzymes (Troponin)')
+        recs.append('If chest pain is severe/radiating to left arm or jaw, go to emergency services')
+    if bp > 140:
+        recs.append('Blood pressure is elevated, discuss antihypertensive management')
+    if chol > 240:
+        recs.append('Cholesterol is high, ask for full lipid panel and lifestyle modification')
+    if chest_pain in ['typical_angina','atypical_angina','non_anginal_pain']:
+        recs.append('Describe chest pain pattern to a cardiologist, especially during exertion')
+    return band, recs
+```
+
+D) app/app.py
+Flask web app with three routes:
+
+* "/" form
+* "/result" prediction result
+* "/leaderboard" model metrics display
+
+```python
+from flask import Flask, render_template, request
+import pandas as pd
+import joblib
+from inference import predict_risk
+from risk_logic import classify_band, recommendations
+
+app = Flask(__name__)
+
+metrics_df = pd.read_csv('data/leaderboard_metrics.csv')
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/result', methods=['POST'])
+def result():
+    age = float(request.form['age'])
+    sex = request.form['sex']
+    cp = request.form['cp']
+    trestbps = float(request.form['trestbps'])
+    chol = float(request.form['chol'])
+    fbs = request.form['fbs']
+    restecg = request.form['restecg']
+    thalach = float(request.form['thalach'])
+    exang = request.form['exang']
+    oldpeak = float(request.form['oldpeak'])
+    slope = request.form['slope']
+    ca = request.form['ca']
+    thal = request.form['thal']
+
+    patient = {
+        'age': age,
+        'sex': sex,
+        'cp': cp,
+        'trestbps': trestbps,
+        'chol': chol,
+        'fbs': fbs,
+        'restecg': restecg,
+        'thalach': thalach,
+        'exang': exang,
+        'oldpeak': oldpeak,
+        'slope': slope,
+        'ca': ca,
+        'thal': thal
+    }
+
+    risk_pct = predict_risk(patient)
+    band, recs = recommendations(risk_pct, cp, trestbps, chol)
+
+    return render_template(
+        'result.html',
+        risk_pct=round(risk_pct,2),
+        band=band,
+        recs=recs
+    )
+
+@app.route('/leaderboard')
+def leaderboard():
+    top_models = metrics_df.sort_values(by=['recall','roc_auc'], ascending=[False,False]).head(10)
+    table = top_models[['model','recall','roc_auc','accuracy','f1']]
+    return render_template('leaderboard.html', tables=[table.to_html(classes='table table-striped', index=False)])
+```
+
+E) templates/index.html (Bootstrap-like styling; you can adapt Tailwind etc.)
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Cardio Risk Screener</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="card">
+        <h1>Heart Risk Screener</h1>
+        <form action="/result" method="POST">
+            <label>Age</label><input type="number" name="age" step="1" required>
+            <label>Sex</label>
+            <select name="sex">
+                <option value="0">Female</option>
+                <option value="1">Male</option>
+            </select>
+            <label>Chest Pain Type</label>
+            <select name="cp">
+                <option value="0">Typical angina</option>
+                <option value="1">Atypical angina</option>
+                <option value="2">Non-anginal pain</option>
+                <option value="3">Asymptomatic</option>
+            </select>
+            <label>Resting BP (mm Hg)</label><input type="number" name="trestbps" step="1" required>
+            <label>Cholesterol (mg/dl)</label><input type="number" name="chol" step="1" required>
+            <label>Fasting Blood Sugar &gt; 120 mg/dl</label>
+            <select name="fbs">
+                <option value="0">No</option>
+                <option value="1">Yes</option>
+            </select>
+            <label>Resting ECG</label>
+            <select name="restecg">
+                <option value="0">Normal</option>
+                <option value="1">ST-T abnormality</option>
+                <option value="2">LVH</option>
+            </select>
+            <label>Max Heart Rate Achieved</label><input type="number" name="thalach" step="1" required>
+            <label>Exercise Induced Angina</label>
+            <select name="exang">
+                <option value="0">No</option>
+                <option value="1">Yes</option>
+            </select>
+            <label>ST Depression (oldpeak)</label><input type="number" name="oldpeak" step="0.1" required>
+            <label>Slope of ST Segment</label>
+            <select name="slope">
+                <option value="0">Upsloping</option>
+                <option value="1">Flat</option>
+                <option value="2">Downsloping</option>
+            </select>
+            <label>Number of Major Vessels (0-3)</label>
+            <select name="ca">
+                <option value="0">0</option>
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+            </select>
+            <label>Thalassemia</label>
+            <select name="thal">
+                <option value="1">Normal</option>
+                <option value="2">Fixed Defect</option>
+                <option value="3">Reversible Defect</option>
+            </select>
+            <button type="submit">Check My Heart Risk</button>
+        </form>
+        <a class="leaderboard-link" href="/leaderboard">See Model Leaderboard</a>
+    </div>
+</body>
+</html>
+```
+
+F) templates/result.html
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Your Heart Risk</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="card">
+        <h1>Your Estimated Risk: {{ risk_pct }}%</h1>
+        <div class="risk-band {{ band|lower }}">
+            Risk Band: {{ band }}
+        </div>
+        <h2>Recommended Next Steps</h2>
+        <ul>
+            {% for r in recs %}
+            <li>{{ r }}</li>
+            {% endfor %}
+        </ul>
+        <a href="/">Check Another Person</a>
+        <a class="leaderboard-link" href="/leaderboard">View Model Leaderboard</a>
+    </div>
+</body>
+</html>
+```
+
+G) templates/leaderboard.html
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Model Leaderboard</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="card">
+        <h1>Top Models By Clinical Sensitivity</h1>
+        {% for table in tables %}
+        <div class="table-wrapper">{{ table|safe }}</div>
+        {% endfor %}
+        <a href="/">Back</a>
+    </div>
+</body>
+</html>
+```
+
+H) static/styles.css
+(You can beautify with glassmorphism / Tailwind later. For now just basic classes.)
+
+```css
+body {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: radial-gradient(circle at 20% 20%, #1f2937 0%, #000 80%);
+    color: #fff;
+    display: flex;
+    justify-content: center;
+    padding: 2rem;
+}
+.card {
+    background: rgba(31,41,55,0.6);
+    backdrop-filter: blur(12px);
+    border-radius: 1rem;
+    padding: 2rem;
+    width: 100%;
+    max-width: 480px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+}
+h1, h2 {
+    color: #fff;
+    margin-bottom: 1rem;
+}
+label {
+    font-size: 0.9rem;
+    color: #cbd5e1;
+    display: block;
+    margin-top: 1rem;
+}
+input, select {
+    width: 100%;
+    padding: 0.6rem 0.8rem;
+    border-radius: 0.5rem;
+    border: 1px solid #475569;
+    background: #0f172a;
+    color: #fff;
+    margin-top: 0.4rem;
+}
+button {
+    margin-top: 1.5rem;
+    width: 100%;
+    padding: 0.8rem 1rem;
+    border-radius: 0.5rem;
+    border: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    background: linear-gradient(to right,#0ea5e9,#6366f1);
+    color:#fff;
+    cursor:pointer;
+}
+button:hover {
+    opacity:0.9;
+}
+.leaderboard-link {
+    display:block;
+    text-align:center;
+    margin-top:1.5rem;
+    color:#93c5fd;
+    text-decoration:none;
+    font-size:0.9rem;
+}
+.leaderboard-link:hover {
+    text-decoration:underline;
+}
+.risk-band {
+    font-weight:600;
+    padding:0.6rem 0.8rem;
+    border-radius:0.5rem;
+    display:inline-block;
+    margin-bottom:1rem;
+}
+.risk-band.low {
+    background:#065f46;
+    color:#ecfdf5;
+}
+.risk-band.moderate {
+    background:#78350f;
+    color:#fef3c7;
+}
+.risk-band.high {
+    background:#7f1d1d;
+    color:#fee2e2;
+}
+.risk-band.critical {
+    background:#dc2626;
+    color:#fff;
+    animation:pulse 1s infinite;
+}
+@keyframes pulse {
+    0% { box-shadow:0 0 10px #dc2626; }
+    50% { box-shadow:0 0 30px #dc2626; }
+    100% { box-shadow:0 0 10px #dc2626; }
+}
+.table-wrapper {
+    background:#0f172a;
+    padding:1rem;
+    border-radius:0.5rem;
+    overflow-x:auto;
+}
+.table {
+    width:100%;
+    border-collapse:collapse;
+    color:#fff;
+    font-size:0.8rem;
+}
+.table th, .table td {
+    border-bottom:1px solid #475569;
+    padding:0.5rem;
+    text-align:left;
+}
+```
+
+---
+
+9. How you will run this project locally
+
+---
+
+1. Put dataset into data/heart.csv
+   Use the UCI Cleveland heart dataset. You can download and preprocess into columns exactly matching:
+   age,sex,cp,trestbps,chol,fbs,restecg,thalach,exang,oldpeak,slope,ca,thal,target
+   Make sure target is 0/1.
+
+2. Create virtual environment and install:
+   flask
+   scikit-learn
+   imbalanced-learn
+   xgboost
+   lightgbm
+   catboost
+   pandas
+   numpy
+   joblib
+
+3. Run python training/train_models.py
+   This will generate:
+   data/best_model.pkl
+   data/leaderboard_metrics.csv
+   data/pipeline.pkl
+
+4. Run Flask:
+   export FLASK_APP=app/app.py
+   flask run
+
+5. Open browser at [http://127.0.0.1:5000](http://127.0.0.1:5000) (or whatever it prints)
+
+---
+
+10. Clinical disclaimer text to include in UI footer
+
+---
+
+“This tool estimates cardiovascular risk based on historical data and does not replace medical evaluation. If you have chest pain, shortness of breath, jaw/left arm pain, dizziness, or you feel unwell, seek emergency care immediately.”
+
+---
+
+## Where you are now
+
+You have:
+
+* Full architecture
+* Dataset definition
+* Model list (34 total, advanced clinical focus on recall)
+* Offline trainer script
+* Flask inference app
+* Risk interpretation like a screening cardiologist
+
+Next step you can do immediately:
+Drop in the Cleveland heart dataset as data/heart.csv and run the training script.
+After that the Flask app will serve real predictions and a live leaderboard.

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Model Leaderboard</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="header">
+                <h1>&#128202; Model Performance Leaderboard</h1>
+                <p class="subtitle">Comparing 10 Machine Learning Models</p>
+            </div>
+            
+            <div class="leaderboard-info">
+                <p>Models ranked by <strong>Recall</strong> (sensitivity) and <strong>AUROC</strong> (area under ROC curve).
+                In clinical screening, high recall is critical to avoid missing high-risk patients.</p>
+                {% if not full %}
+                <p><a href="/leaderboard_full" class="link">View all models</a></p>
+                {% else %}
+                <p><strong>Showing all models</strong></p>
+                {% endif %}
+            </div>
+            
+            <div class="table-container">
+                <table class="leaderboard-table">
+                    <thead>
+                        <tr>
+                            <th>Rank</th>
+                            <th>Model</th>
+                            <th>Recall</th>
+                            <th>AUROC</th>
+                            <th>Accuracy</th>
+                            <th>Precision</th>
+                            <th>F1 Score</th>
+                            <th>Brier Score</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for model in models %}
+                        <tr {% if loop.index == 1 %}class="best-model"{% endif %}>
+                            <td>{{ loop.index }}</td>
+                            <td>
+                                {{ model.model }}
+                                {% if loop.index == 1 %}
+                                <span class="deployed-badge">DEPLOYED</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ "%.4f"|format(model.recall) }}</td>
+                            <td>{{ "%.4f"|format(model.roc_auc) }}</td>
+                            <td>{{ "%.4f"|format(model.accuracy) }}</td>
+                            <td>{{ "%.4f"|format(model.precision) }}</td>
+                            <td>{{ "%.4f"|format(model.f1) }}</td>
+                            <td>{{ "%.4f"|format(model.brier) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="metrics-info">
+                <h3>Metric Definitions</h3>
+                <ul>
+                    <li><strong>Recall (Sensitivity):</strong> Proportion of actual heart disease cases correctly identified</li>
+                    <li><strong>AUROC:</strong> Model's ability to distinguish between disease and non-disease cases</li>
+                    <li><strong>Accuracy:</strong> Overall correctness of predictions</li>
+                    <li><strong>Precision:</strong> Proportion of predicted disease cases that are actually positive</li>
+                    <li><strong>F1 Score:</strong> Harmonic mean of precision and recall</li>
+                    <li><strong>Brier Score:</strong> Calibration quality of probability predictions (lower is better)</li>
+                </ul>
+            </div>
+            
+            <div class="button-container">
+                <a href="/" class="btn-primary">Back to Screener</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
